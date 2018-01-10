@@ -9,7 +9,7 @@ import pickle
 import time
 import random
 
-TOKEN = "103657961:AAH4j7e--rba3f66mLpaDywtNltpuS5R9Aw"
+TOKEN = "CHANGEME"
 MODULE_DIR = "{0}/modules/".format(os.getcwd())
 dp = ""
 
