@@ -25,9 +25,13 @@ from pyowm import OWM
 TOKEN = config.TOKEN
 MODULE_DIR = "{0}/modules/".format(os.getcwd())
 
+COUNTRY_CODES = ['CA','US']
+STATE_CODES = ['AL','AK','AR','AZ','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IA','IN','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
+
 owm = OWM(config.OWM)
 mgr = owm.weather_manager()
 reg = owm.city_id_registry()
+#zip = mgr.weather_at_zip_code()
 ERapiurl = f"https://v6.exchangerate-api.com/v6/{config.er_api_key}/latest/USD"
 
 root = logging.getLogger()
@@ -61,17 +65,30 @@ def getLFName(groupname):
 def getLocation(location):
     location = " ".join(location.split()[1:])
     if len(location.split()[-1]) == 2:
-        country = location.split()[-1]
+        country = location.split()[-1].upper()
         location = " ".join(location.split()[:-1])
+        print(country)
         print("Found country code")
-        print(location)
+        if len(location.split()[-1]) == 2:
+            print ("Found state code")
+            state = location.split()[-1]
+            print(state)
+            location = " ".join(location.split()[:-1])
+            print(location)
+            locations = reg.locations_for(location, country=country, state=state, matching='exact')
+        else:
+            print(location)
+            locations = reg.locations_for(location, country=country, matching='exact')
     else:
-        print("No country code found, attempting to find location without.")
+        print("Error: no Country code found.")
         country = ""
 
-    locations = reg.locations_for(location, country=country, matching='exact')
+    
+    if locations:
+        return locations[0]
+    else:
+        return "Error, location not found"
 
-    return locations[0]
 
 async def usd_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Convert CAD to USD"""
@@ -114,14 +131,40 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Get current weather for given location."""
     message = update.message.text
     if len(message.split()) > 1:
-        location = getLocation(update.message.text)
-        weather = mgr.weather_at_coords(lat=location.lat, lon=location.lon).weather
-        temperature = weather.temperature('celsius')
-        wind = weather.wind()
-        forcast = "It is currently {0} and feels like {1}\n"\
-                  "The actual temperature is: {2} with a windspeed of {3}\n"\
-                  "The sun will set at {4}".format(weather.detailed_status,temperature['feels_like'], temperature['temp'], wind['speed'],weather.sunset_time(timeformat='date'))
-        await context.bot.send_message(update.message.chat_id, text=forcast)
+        if message.split()[1].isdigit():
+            zipcode = message.split()[1]
+            weather = mgr.weather_at_zip_code(zipcode,'US').weather
+            print(weather)
+            temperature = weather.temperature('fahrenheit')
+            wind = str(round(weather.wind(unit='miles_hour')['speed'],2)) + "mph"
+            fltemp = str(temperature['feels_like']) + "\u00b0 F"
+            rtemp = str(temperature['temp']) + "\u00b0 F"
+
+            forcast = "It is currently {0} and feels like {1}\n"\
+                      "The actual temperature is: {2} with a windspeed of {3}\n"\
+                      "The sun will set at {4}".format(weather.detailed_status,fltemp, rtemp, wind, weather.sunset_time(timeformat='date'))
+            await context.bot.send_message(update.message.chat_id, text=f"{forcast}")
+        else:
+            location = getLocation(update.message.text)
+            if location != "Error, location not found":
+                print(location)
+                weather = mgr.weather_at_coords(lat=location.lat, lon=location.lon).weather
+                if location.country == "US":
+                    temperature = weather.temperature('fahrenheit')
+                    wind = str(round(weather.wind(unit='miles_hour')['speed'],2)) + "mph"
+                    fltemp = str(temperature['feels_like']) + "\u00b0 F"
+                    rtemp = str(temperature['temp']) + "\u00b0 F"
+                else:
+                    temperature = weather.temperature('celsius')
+                    wind = str(round((weather.wind()['speed'] * 3.6),2)) + "kph"
+                    fltemp = str(temperature['feels_like']) + "\u00b0 C"
+                    rtemp = str(temperature['temp']) + "\u00b0 C"
+                forcast = "It is currently {0} and feels like {1}\n"\
+                      "The actual temperature is: {2} with a windspeed of {3}\n"\
+                      "The sun will set at {4}".format(weather.detailed_status,fltemp, rtemp, wind, weather.sunset_time(timeformat='date'))
+                await context.bot.send_message(update.message.chat_id, text=f"{forcast}")
+            else:
+                await context.bot.send_message(update.message.chat_id, text=f"Error finding location")
     else:
         await context.bot.send_message(update.message.chat_id, text=f"Please include a location with your command")
 
