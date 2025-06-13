@@ -50,15 +50,17 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+os.makedirs("chatlogs", exist_ok = True)
 
-def writeLog(logmsg, file):
-    with open(file, 'a') as logfile:
+def writechatLog(logmsg, file):
+    fullpath = "chatlogs/" + file
+    with open(fullpath, 'a') as logfile:
         logfile.write(logmsg + '\n')
 
 
 def getLFName(groupname):
     strtime = time.strftime("%Y%m%d")
-    filename = groupname.strip("-") + "-" + strtime + ".log"
+    filename = groupname.title + "-" + strtime + ".log"
     return filename
 
 
@@ -175,12 +177,13 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = "{0} <{1}> {2}".format(ts,
                                      update.effective_user.username,
                                      update.message.text)
-    filename = getLFName(str(update.message.chat.id))
-    writeLog(message, filename)
+    if update.message.chat.type == "group":
+        filename = getLFName(update.message.chat)
+        writechatLog(message, filename)
 
-    print("{0} <{1}> {2}".format(ts,
-                                 update.effective_user.username,
-                                 update.message.text))
+        print("{0} <{1}> {2}".format(ts,
+                                     update.effective_user.username,
+                                     update.message.text))
 
 
 def main() -> None:
