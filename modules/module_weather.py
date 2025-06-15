@@ -21,20 +21,20 @@ def getLocation(location):
     if len(location.split()[-1]) == 2:
         country = location.split()[-1].upper()
         location = " ".join(location.split()[:-1])
-        print(country)
-        print("Found country code")
+#        print(country)
+#        print("Found country code")
         if len(location.split()[-1]) == 2:
-            print ("Found state code")
+#            print ("Found state code")
             state = location.split()[-1]
-            print(state)
+#            print(state)
             location = " ".join(location.split()[:-1])
-            print(location)
+#            print(location)
             locations = reg.locations_for(location, country=country, state=state, matching='exact')
         else:
-            print(location)
+#            print(location)
             locations = reg.locations_for(location, country=country, matching='exact')
     else:
-        print("Error: no Country code found.")
+        logger.info("Error: no Country code found.")
         country = ""
 
     if locations:
@@ -49,7 +49,7 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if message.split()[1].isdigit():
             zipcode = message.split()[1]
             weather = mgr.weather_at_zip_code(zipcode,'US').weather
-            print(weather)
+#            print(weather)
             temperature = weather.temperature('fahrenheit')
             wind = str(round(weather.wind(unit='miles_hour')['speed'],2)) + "mph"
             fltemp = str(temperature['feels_like']) + "\u00b0 F"
@@ -62,7 +62,7 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             location = getLocation(update.message.text)
             if location != "Error, location not found":
-                print(location)
+#                print(location)
                 weather = mgr.weather_at_coords(lat=location.lat, lon=location.lon).weather
                 if location.country == "US":
                     temperature = weather.temperature('fahrenheit')
