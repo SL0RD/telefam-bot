@@ -86,9 +86,8 @@ def loadcommands(rehash=False):
             logger.info("Reloading module: {}".format(module_name))
     #        importlib.reload(module)
         
-        sleep(5)
+        time.sleep(5)
         
-        """
         for m, env in modules.items():
             myglobals, mylocals, = env
             commands = [(c, ref) for c, ref in mylocals.items()
@@ -98,7 +97,6 @@ def loadcommands(rehash=False):
                 print(f)
                 logger.info("Unloading command: {}".format(t[:-8]))
                 application.remove_handler(CommandHandler(t[:-8], f))
-"""
     for module_name, module in modules.items():
         logger.info("Loading commands from: {}".format(module_name))
         for c in (dir(module)):

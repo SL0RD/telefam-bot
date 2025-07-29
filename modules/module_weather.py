@@ -1,3 +1,5 @@
+import time
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -8,18 +10,31 @@ from pyowm import OWM
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
-# from pyowm.utils import config as owmconfig
-# from pyowm.utils import timestamps
+from timezonefinder import TimezoneFinder
+import pytz
 
 config = config
 owm = OWM(config.OWM)
 mgr = owm.weather_manager()
-reg = owm.city_id_registry()
-#zip = mgr.weather_at_zip_code()
 
 COUNTRY_CODES = ['CA','US']
 STATE_CODES = ['AL','AK','AR','AZ','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IA','IN','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
 PROVINCE_CODES = ['NS','NB','PE','NL','QE','ON','SK','MB','AB','BC']
+
+def get_tz_from_coords(lat, lon, include_details=False):
+    try:
+        tf = TimezoneFinder()
+        timezone_name = tf.timezone_at(lat=lat, lng=lon)
+
+        if not timezone_name:
+            return None
+
+        if not include_details:
+            return timezone_name
+    except Exception as e:
+        print(f"Error getting timezone: {e}")
+        return None
+
 
 def get_coordinates(location_name, timeout=10, retries=3):
 
@@ -27,57 +42,42 @@ def get_coordinates(location_name, timeout=10, retries=3):
 
     for attempt in range(retries):
         try:
-            print(location_name)
+            #print(location_name)
             location = geolocator.geocode(location_name, timeout=timeout)
 
             if location:
-                    print("Location found")
-                    return (location.latitude, location.longitude)
+                #print("Location found")
+                #print(f"Lat: {location.latitude} Lon: {location.longitude}")
+                return (location.latitude, location.longitude)
             else:
-                    print("No location found")
-                    return None
-            
+                #print("No location found")
+                return None
+
         except GeocoderTimedOut:
             if attempt < retries -1:
                 print(f"Timeout occured. Retrying in 1 second... (Attempt {attempt + 1}/{retries})")
                 time.sleep(1)
             else:
                 raise Exception(f"Geocoding service timed out after {retries} tries")
-        
+
         except GeocoderServiceError as e:
             raise Exception(f"Geocoding service error: {e}")
 
     return None
 
+async def forecast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Get forecast for given location"""
+    message = update.message.text
+    if len(message.split()) > 1:
+        location = get_coordinates(" ".join(update.message.text.split()[1:]))
+        if location != None:
+            weather = mgr.forecast_at_coords(lat=location[0], lon=location[1], interval='daily')
+            cur_forecast = ""
+            for i in range(len(weather.forecast.weathers)):
+                cur_forecast += f"{weather.forecast.weathers[i].reference_time(timeformat='iso')} - {weather.forecast.weathers[i].detailed_status} Temp: {weather.forecast.weathers[i].temperature('celsius')['day']}\n"
 
+            await context.bot.send_message(update.message.chat_id, text=f"{cur_forecast}")
 
-def getLocation(location):
-    location = " ".join(location.split()[1:])
-    if len(location.split()[-1]) == 2:
-        country = location.split()[-1].upper()
-        location = " ".join(location.split()[:-1])
-        print(country)
-#        print("Found country code")
-        if len(location.split()[-1]) == 2:
-#            print ("Found state code")
-            state = location.split()[-1]
-            print(state)
-            location = " ".join(location.split()[:-1])
-            print(location)
-            locations = reg.locations_for(location, country=country, state=state, matching='like')
-            print(locations)
-        else:
-            print(location)
-            locations = reg.locations_for(location, country=country, matching='like')
-            print(locations)
-    else:
-        logger.info("Error: no Country code found.")
-        country = ""
-
-    if locations:
-        return locations[0]
-    else:
-        return "Error, location not found"
 
 async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Get current weather for given location."""
@@ -89,10 +89,12 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             temperature = weather.temperature('fahrenheit')
             wind = str(round(weather.wind(unit='miles_hour')['speed'],2)) + "mph"
             fltemp = str(temperature['feels_like']) + "\u00b0 F (" + str(round((temperature['feels_like']-32)/1.8)) + "\u00b0 C)"
-            rtemp = str(temperature['temp']) + "\u00b0 F (" + str(round((temperature['feels_like']-32)/1.8)) + "\u00b0 C)"
+            rtemp = str(temperature['temp']) + "\u00b0 F (" + str(round((temperature['temp']-32)/1.8)) + "\u00b0 C)"
+            mintemp = str(temperature['temp_min']) + "\u00b0 F (" + str(round((temperature['temp_min']-32)/1.8)) + "\u00b0 C)"
+            maxtemp = str(temperature['temp_max']) + "\u00b0 F (" + str(round((temperature['temp_max']-32)/1.8)) + "\u00b0 C)"
             humidity = str(weather.humidity)
-
             forcast = f"It is currently {weather.detailed_status} and feels like {fltemp}\n"\
+                f"It will reach a high of {maxtemp}, with a low of {mintemp}\n"\
                 f"The humidity is {humidity}%\n"\
                 f"The actual temperature is: {rtemp} with a windspeed of {wind}\n"\
                 f"The sun will set at {weather.sunset_time(timeformat='date')}"
@@ -106,14 +108,16 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 wind = str(round((weather.wind()['speed'] * 3.6),2)) + "kph"
                 fltemp = str(temperature['feels_like']) + "\u00b0 C (" + str(round(temperature['feels_like']*1.8)+32) + "\u00b0 F)"
                 rtemp = str(temperature['temp']) + "\u00b0 C (" + str(round(temperature['temp']*1.8)+32) + "\u00b0 F)"
+                mintemp = str(temperature['temp_min']) + "\u00b0 C (" + str(round(temperature['temp_min']*1.8)+32) + "\u00b0 F)"
+                maxtemp = str(temperature['temp_max']) + "\u00b0 C (" + str(round(temperature['temp_max']*1.8)+32) + "\u00b0 F)"
                 forcast = f"It's currently {weather.detailed_status} and feels like {fltemp}\n"\
+                    f"It will reach a high of {maxtemp}, with a low of {mintemp}\n"\
                     f"The humidity is {humidity}%\n"\
                     f"The actual temperature is: {rtemp} with a windspeed of {wind}\n"\
-                    f"The sun will set at {weather.sunset_time(timeformat='date')}"
+                    f"The sun will set at {weather.sunset_time(timeformat='date').time().strftime('%H:%M:%S')}"
                 await context.bot.send_message(update.message.chat_id, text=f"{forcast}")
             else:
                 await context.bot.send_message(update.message.chat_id, text=f"Error finding location")
     else:
         await context.bot.send_message(update.message.chat_id, text=f"Please include a location with your command")
-
 
