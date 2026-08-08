@@ -2,7 +2,7 @@
 
 import logging
 import sys
-import importlib
+import importlib.util
 import os
 import time
 import requests
@@ -117,23 +117,51 @@ def loadmodules():
         modules[module] = (env, env)
 
 
+def parse_command_amount(text):
+    parts = text.split()
+    if len(parts) < 2:
+        return None
+    try:
+        return float(parts[1])
+    except ValueError:
+        return None
+
+
+def get_cad_rate():
+    try:
+        response = requests.get(ERapiurl, timeout=10)
+        response.raise_for_status()
+        return response.json()['conversion_rates']['CAD']
+    except (requests.RequestException, KeyError, ValueError) as e:
+        logger.error("Failed to fetch exchange rate: %s", e)
+        return None
+
+
 async def usd_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Convert CAD to USD"""
-    response = requests.get(ERapiurl)
-    data = response.json()
-    cad = data['conversion_rates']['CAD']
-    message = (update.message.text).split()[-1]
-    resp = f"{message}CAD is {(float(message) / cad):.2f}USD"
+    amount = parse_command_amount(update.message.text)
+    if amount is None:
+        await update.message.reply_text("Please provide a valid amount, e.g. /usd 100")
+        return
+    cad = get_cad_rate()
+    if cad is None:
+        await update.message.reply_text("Could not fetch exchange rates. Please try again later.")
+        return
+    resp = f"{amount}CAD is {(amount / cad):.2f}USD"
     await context.bot.send_message(update.message.chat_id, text=resp)
 
 
 async def cad_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Convert USD to CAD"""
-    response = requests.get(ERapiurl)
-    data = response.json()
-    cad = data['conversion_rates']['CAD']
-    message = (update.message.text).split()[-1]
-    resp = f"{message}USD is {(float(message) * cad):.2f}CAD"
+    amount = parse_command_amount(update.message.text)
+    if amount is None:
+        await update.message.reply_text("Please provide a valid amount, e.g. /cad 100")
+        return
+    cad = get_cad_rate()
+    if cad is None:
+        await update.message.reply_text("Could not fetch exchange rates. Please try again later.")
+        return
+    resp = f"{amount}USD is {(amount * cad):.2f}CAD"
     await context.bot.send_message(update.message.chat_id, text=resp)
 
 
