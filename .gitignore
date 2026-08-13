@@ -11,6 +11,9 @@ venv/
 # Runtime logs
 chatlogs/
 
+# Runtime user data
+lastfm_users.json
+
 # Editor / OS
 .env
 .idea/
