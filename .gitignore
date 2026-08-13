@@ -1,0 +1,19 @@
+# Local config with secrets — copy from example.conf.py
+config.py
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Runtime logs
+chatlogs/
+
+# Editor / OS
+.env
+.idea/
+.vscode/
+*.swp
+.DS_Store
