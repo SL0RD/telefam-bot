@@ -3,6 +3,7 @@
 import importlib.util
 import logging
 import os
+import re
 import sys
 import time
 
@@ -20,7 +21,8 @@ from telegram.ext import (
 
 TOKEN = config.TOKEN
 MODULE_DIR = os.path.join(os.getcwd(), "modules")
-ADMIN_USERNAME = "SL0RD"
+ADMIN_IDS = set(getattr(config, "ADMIN_IDS", []))
+ADMIN_USERNAME = getattr(config, "ADMIN_USERNAME", "SL0RD")
 ER_API_URL = f"https://v6.exchangerate-api.com/v6/{config.er_api_key}/latest/USD"
 
 modules = {}
@@ -45,13 +47,27 @@ logger.setLevel(logging.DEBUG)
 os.makedirs("chatlogs", exist_ok=True)
 
 
+def sanitize_filename(name: str) -> str:
+    cleaned = re.sub(r"[^\w\s-]", "", name or "").strip()
+    return cleaned if cleaned else "chat"
+
+
 def get_log_filename(chat) -> str:
-    return f"{chat.title}-{time.strftime('%Y%m%d')}.log"
+    title = sanitize_filename(chat.title or f"chat_{chat.id}")
+    return f"{title}-{time.strftime('%Y%m%d')}.log"
 
 
 def write_chat_log(logmsg: str, filename: str) -> None:
     with open(os.path.join("chatlogs", filename), "a") as logfile:
         logfile.write(logmsg + "\n")
+
+
+def is_admin(user) -> bool:
+    if not user:
+        return False
+    if ADMIN_IDS:
+        return user.id in ADMIN_IDS
+    return bool(user.username) and user.username == ADMIN_USERNAME
 
 
 def load_modules() -> None:
@@ -162,7 +178,7 @@ async def cad_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     builtin = ["start", "cad", "usd", "help"]
     lines = [f"/{cmd}" for cmd in sorted(set(builtin + commands))]
-    if update.message.from_user.username == ADMIN_USERNAME:
+    if is_admin(update.effective_user):
         lines.append("/rehash")
     await update.message.reply_text("Available commands:\n" + "\n".join(lines))
 
@@ -178,7 +194,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def rehash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message.from_user.username != ADMIN_USERNAME:
+    if not is_admin(update.effective_user):
         return
     logger.info("Rehash command triggered")
     loadcommands(rehash=True)
@@ -189,7 +205,9 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message.chat.type != "group":
         return
     ts = time.strftime("%H:%M:%S")
-    message = f"{ts} <{update.effective_user.username}> {update.message.text}"
+    user = update.effective_user
+    username = user.username or user.first_name or str(user.id)
+    message = f"{ts} <{username}> {update.message.text}"
     write_chat_log(message, get_log_filename(update.message.chat))
     logger.debug(message)
 
