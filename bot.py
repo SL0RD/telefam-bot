@@ -68,12 +68,24 @@ def is_admin(user) -> bool:
     return bool(user.username) and user.username == ADMIN_USERNAME
 
 
-def load_modules() -> None:
-    """Load all module_*.py files from the modules directory."""
-    global modules
-    modules = {}
+def load_modules() -> dict:
+    """Load all module_*.py files from the modules directory.
 
-    for filename in sorted(os.listdir(MODULE_DIR)):
+    Returns the loaded modules keyed by name. If a module fails to load, its
+    previous working version is kept when one exists. Never raises.
+    """
+    for name in list(sys.modules):
+        if name.startswith("module_"):
+            sys.modules.pop(name, None)
+
+    try:
+        filenames = sorted(os.listdir(MODULE_DIR))
+    except OSError as e:
+        logger.error("Cannot read modules directory: %s", e)
+        return {}
+
+    loaded = {}
+    for filename in filenames:
         if not filename.endswith(".py") or not filename.startswith("module_"):
             continue
 
@@ -81,9 +93,20 @@ def load_modules() -> None:
         path = os.path.join(MODULE_DIR, filename)
         spec = importlib.util.spec_from_file_location(module_name, path)
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception as e:
+            logger.error("Failed to load module %s: %s", module_name, e, exc_info=True)
+            sys.modules.pop(module_name, None)
+            previous = modules.get(module_name)
+            if previous is not None:
+                logger.warning("Keeping previous version of module: %s", module_name)
+                loaded[module_name] = previous
+            continue
+        loaded[module_name] = module
         logger.info("Loaded module: %s", module_name)
+
+    return loaded
 
 
 def unload_module_commands() -> None:
@@ -100,11 +123,12 @@ def unload_module_commands() -> None:
 
 def loadcommands(rehash: bool = False) -> None:
     """Register command handlers exported by modules."""
-    global application, commands, module_handlers
+    global application, commands, module_handlers, modules
 
     if rehash:
+        new_modules = load_modules()
         unload_module_commands()
-        load_modules()
+        modules = new_modules
 
     for module_name, module in modules.items():
         logger.info("Loading commands from: %s", module_name)
@@ -165,9 +189,9 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def main() -> None:
-    global application
+    global application, modules
 
-    load_modules()
+    modules = load_modules()
 
     application = Application.builder().token(TOKEN).build()
 
