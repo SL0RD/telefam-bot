@@ -60,7 +60,7 @@ This registers `/ping`. After adding or editing a module, run `/rehash` to reloa
 
 ## Chat logging
 
-Messages in group chats are appended to `chatlogs/<chat-title>-<YYYYMMDD>.log`.
+All messages in groups and supergroups — text, commands, and media — are appended to `chatlogs/<chat-title>-<YYYYMMDD>.log`, along with join/leave events. Each line includes a full timestamp and the sender's username and numeric user ID.
 
 ## Security
 

@@ -12,6 +12,7 @@ import config
 from telegram import Update
 from telegram.ext import (
     Application,
+    ChatMemberHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -58,6 +59,41 @@ def get_log_filename(chat) -> str:
 def write_chat_log(logmsg: str, filename: str) -> None:
     with open(os.path.join("chatlogs", filename), "a") as logfile:
         logfile.write(logmsg + "\n")
+
+
+def render_message_content(message) -> str:
+    """Return a human-readable representation of a message's content."""
+    if message.text:
+        content = message.text
+    elif message.photo:
+        content = "[photo]"
+    elif message.video:
+        content = "[video]"
+    elif message.animation:
+        content = "[gif]"
+    elif message.sticker:
+        content = f"[sticker: {message.sticker.emoji}]" if message.sticker.emoji else "[sticker]"
+    elif message.audio:
+        content = "[audio]"
+    elif message.voice:
+        content = "[voice]"
+    elif message.video_note:
+        content = "[video note]"
+    elif message.document:
+        content = f"[file: {message.document.file_name}]" if message.document.file_name else "[file]"
+    else:
+        content = "[message]"
+
+    if message.caption:
+        content += f" ({message.caption})"
+    return content
+
+
+def format_log_line(ts: str, user, content: str) -> str:
+    if user is None:
+        return f"{ts} <unknown> {content}"
+    username = user.username or user.first_name or str(user.id)
+    return f"{ts} <{username} ({user.id})> {content}"
 
 
 def is_admin(user) -> bool:
@@ -178,14 +214,32 @@ async def rehash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message.chat.type != "group":
+    if update.effective_chat.type not in ("group", "supergroup"):
         return
-    ts = time.strftime("%H:%M:%S")
-    user = update.effective_user
-    username = user.username or user.first_name or str(user.id)
-    message = f"{ts} <{username}> {update.message.text}"
-    write_chat_log(message, get_log_filename(update.message.chat))
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    content = render_message_content(update.message)
+    message = format_log_line(ts, update.effective_user, content)
+    write_chat_log(message, get_log_filename(update.effective_chat))
     logger.debug(message)
+
+
+async def log_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    member_update = update.chat_member
+    if member_update.chat.type not in ("group", "supergroup"):
+        return
+    new_status = member_update.new_chat_member.status
+    if new_status == "member":
+        event = "joined the group"
+    elif new_status in ("left", "kicked"):
+        event = "left the group"
+    else:
+        return
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    user = member_update.new_chat_member.user
+    username = user.username or user.first_name or str(user.id)
+    line = f"{ts} * {username} ({user.id}) {event}"
+    write_chat_log(line, get_log_filename(member_update.chat))
+    logger.debug(line)
 
 
 def main() -> None:
@@ -200,7 +254,8 @@ def main() -> None:
     application.add_handler(CommandHandler("rehash", rehash_command))
 
     loadcommands()
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    application.add_handler(MessageHandler(filters.ChatType.GROUPS, echo))
+    application.add_handler(ChatMemberHandler(log_member_update, ChatMemberHandler.CHAT_MEMBER))
     application.add_error_handler(error_handler)
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
