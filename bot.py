@@ -1,123 +1,119 @@
 #!/usr/bin/env python
 
-import logging
-import sys
 import importlib.util
+import logging
 import os
+import sys
 import time
-import requests
 
 import config
+import requests
 
 from telegram import Update
 from telegram.ext import (
-        Application,
-        CommandHandler,
-        ContextTypes,
-        MessageHandler,
-        filters,
-        )
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
-global config, modules
-config = config
 TOKEN = config.TOKEN
-MODULE_DIR = "{0}/modules/".format(os.getcwd())
+MODULE_DIR = os.path.join(os.getcwd(), "modules")
+ADMIN_USERNAME = "SL0RD"
+ER_API_URL = f"https://v6.exchangerate-api.com/v6/{config.er_api_key}/latest/USD"
 
 modules = {}
 commands = []
-ERapiurl = f"https://v6.exchangerate-api.com/v6/{config.er_api_key}/latest/USD"
+module_handlers = []
+application = None
 
 root = logging.getLogger()
 root.setLevel(logging.INFO)
 
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 ch.setFormatter(formatter)
 root.addHandler(ch)
 
-logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-os.makedirs("chatlogs", exist_ok = True)
+os.makedirs("chatlogs", exist_ok=True)
 
 
-def getLFName(messagedata):
-    strtime = time.strftime("%Y%m%d")
-    filename = messagedata.title + "-" + strtime + ".log"
-    return filename
+def get_log_filename(chat) -> str:
+    return f"{chat.title}-{time.strftime('%Y%m%d')}.log"
 
 
-def writechatLog(logmsg, file):
-    fullpath = "chatlogs/" + file
-    with open(fullpath, 'a') as logfile:
-        logfile.write(logmsg + '\n')
-
-module_files = [f[:-3] for f in os.listdir(MODULE_DIR) if f.endswith(".py") and f.startswith("module_")]
-
-for module_name in module_files:
-    spec = importlib.util.spec_from_file_location(module_name, os.path.join(MODULE_DIR, f"{module_name}.py"))
-    module = importlib.util.module_from_spec(spec)
-    #importlib.import_module(module_name)
-    spec.loader.create_module(module)
-    spec.loader.exec_module(module)
-    modules[module_name] = module
+def write_chat_log(logmsg: str, filename: str) -> None:
+    with open(os.path.join("chatlogs", filename), "a") as logfile:
+        logfile.write(logmsg + "\n")
 
 
-for module in modules:
-    print(module)
-
-def loadcommands(rehash=False):
-    """Load commands from modules"""
-    global application, modules, commands
-    if rehash:
-        handlers = application.handlers
-        for handler in handlers[0]:
-            if isinstance(handler, CommandHandler):
-                if handler.callback.__name__[:-8] in commands:
-                    logger.info("Unloading command: {}".format(handler.callback.__name__[:-8]))
-                    application.remove_handler(handler)
-                    commands.remove(handler.callback.__name__[:-8])
-        for module_name, module in modules.items():
-            logger.info("Reloading module: {}".format(module_name))
-    #        importlib.reload(module)
-        
-        time.sleep(5)
-        
-        for m, env in modules.items():
-            myglobals, mylocals, = env
-            commands = [(c, ref) for c, ref in mylocals.items()
-                        if c.endswith("_command")]
-            print(commands)
-            for (t, f) in commands:
-                print(f)
-                logger.info("Unloading command: {}".format(t[:-8]))
-                application.remove_handler(CommandHandler(t[:-8], f))
-    for module_name, module in modules.items():
-        logger.info("Loading commands from: {}".format(module_name))
-        for c in (dir(module)):
-            if c.endswith("_command"):
-                command = getattr(module, c)
-                logger.info("Loading command: {}".format(c[:-8]))
-                application.add_handler(CommandHandler(c[:-8], command))
-                commands.append(c[:-8])
-
-def loadmodules():
-    """Attempt to load modules from MODULE_DIR"""
+def load_modules() -> None:
+    """Load all module_*.py files from the modules directory."""
     global modules
     modules = {}
-    for module in findmodules():
-        env = {}
-        logging.info("Loading module - {}".format(module))
-        exec(open(os.path.join(MODULE_DIR, module)).read(), env, env)
-        modules[module] = (env, env)
+
+    for filename in sorted(os.listdir(MODULE_DIR)):
+        if not filename.endswith(".py") or not filename.startswith("module_"):
+            continue
+
+        module_name = filename[:-3]
+        path = os.path.join(MODULE_DIR, filename)
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        modules[module_name] = module
+        logger.info("Loaded module: %s", module_name)
 
 
-def parse_command_amount(text):
+def unload_module_commands() -> None:
+    """Remove handlers for dynamically loaded module commands."""
+    global application, commands, module_handlers
+
+    for handler in module_handlers:
+        logger.info("Unloading command: %s", handler.callback.__name__[:-8])
+        application.remove_handler(handler)
+
+    module_handlers.clear()
+    commands.clear()
+
+
+def loadcommands(rehash: bool = False) -> None:
+    """Register command handlers exported by modules."""
+    global application, commands, module_handlers
+
+    if rehash:
+        unload_module_commands()
+        load_modules()
+
+    for module_name, module in modules.items():
+        logger.info("Loading commands from: %s", module_name)
+        for name in dir(module):
+            if not name.endswith("_command"):
+                continue
+            command = getattr(module, name)
+            command_name = name[:-8]
+            if command_name in commands or any(
+                command_name in getattr(handler, "commands", ())
+                for handler in application.handlers[0]
+                if isinstance(handler, CommandHandler)
+            ):
+                logger.warning("Skipping duplicate command: %s", command_name)
+                continue
+            logger.info("Loading command: %s", command_name)
+            handler = CommandHandler(command_name, command)
+            application.add_handler(handler)
+            module_handlers.append(handler)
+            commands.append(command_name)
+
+
+def parse_command_amount(text: str):
     parts = text.split()
     if len(parts) < 2:
         return None
@@ -129,16 +125,15 @@ def parse_command_amount(text):
 
 def get_cad_rate():
     try:
-        response = requests.get(ERapiurl, timeout=10)
+        response = requests.get(ER_API_URL, timeout=10)
         response.raise_for_status()
-        return response.json()['conversion_rates']['CAD']
+        return response.json()["conversion_rates"]["CAD"]
     except (requests.RequestException, KeyError, ValueError) as e:
         logger.error("Failed to fetch exchange rate: %s", e)
         return None
 
 
 async def usd_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Convert CAD to USD"""
     amount = parse_command_amount(update.message.text)
     if amount is None:
         await update.message.reply_text("Please provide a valid amount, e.g. /usd 100")
@@ -152,7 +147,6 @@ async def usd_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def cad_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Convert USD to CAD"""
     amount = parse_command_amount(update.message.text)
     if amount is None:
         await update.message.reply_text("Please provide a valid amount, e.g. /cad 100")
@@ -166,60 +160,59 @@ async def cad_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /help is issued."""
-    await update.message.reply_text("Help!")
+    builtin = ["start", "cad", "usd", "help"]
+    lines = [f"/{cmd}" for cmd in sorted(set(builtin + commands))]
+    if update.message.from_user.username == ADMIN_USERNAME:
+        lines.append("/rehash")
+    await update.message.reply_text("Available commands:\n" + "\n".join(lines))
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /start is issued"""
     await update.effective_message.reply_html(
         f"Your chat ID is: <code>{update.effective_chat.id}</code>"
     )
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Log an error and send telegram message to bot dev"""
     logger.error("Exception while handling an update:", exc_info=context.error)
 
 
 async def rehash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message.from_user.username == "SL0RD":
-        logger.info("Rehash command triggered")
-        loadcommands(rehash=True)
-        await context.bot.send_message(update.message.chat_id, text=f"Rehash successfull")
+    if update.message.from_user.username != ADMIN_USERNAME:
+        return
+    logger.info("Rehash command triggered")
+    loadcommands(rehash=True)
+    await context.bot.send_message(update.message.chat_id, text="Rehash successful")
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Process channel messages"""
+    if update.message.chat.type != "group":
+        return
     ts = time.strftime("%H:%M:%S")
-    message = "{0} <{1}> {2}".format(ts,
-                                     update.effective_user.username,
-                                     update.message.text)
-    if update.message.chat.type == "group":
-        filename = getLFName(update.message.chat)
-        writechatLog(message, filename)
-
-        print("{0} <{1}> {2}".format(ts,
-                                     update.effective_user.username,
-                                     update.message.text))
+    message = f"{ts} <{update.effective_user.username}> {update.message.text}"
+    write_chat_log(message, get_log_filename(update.message.chat))
+    logger.debug(message)
 
 
 def main() -> None:
-    """Start the bot."""
     global application
+
+    load_modules()
+
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("cad", cad_command))
     application.add_handler(CommandHandler("usd", usd_command))
+    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("rehash", rehash_command))
 
     loadcommands()
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-
     application.add_error_handler(error_handler)
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-    
 
-if __name__ == '__main__':
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+if __name__ == "__main__":
     main()
