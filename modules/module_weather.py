@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from telegram import Update
@@ -10,10 +11,6 @@ from pyowm import OWM
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
-from timezonefinder import TimezoneFinder
-import pytz
-
-config = config
 owm = OWM(config.OWM)
 mgr = owm.weather_manager()
 
@@ -21,36 +18,17 @@ COUNTRY_CODES = ['CA','US']
 STATE_CODES = ['AL','AK','AR','AZ','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IA','IN','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
 PROVINCE_CODES = ['NS','NB','PE','NL','QE','ON','SK','MB','AB','BC']
 
-def get_tz_from_coords(lat, lon, include_details=False):
-    try:
-        tf = TimezoneFinder()
-        timezone_name = tf.timezone_at(lat=lat, lng=lon)
-
-        if not timezone_name:
-            return None
-
-        if not include_details:
-            return timezone_name
-    except Exception as e:
-        print(f"Error getting timezone: {e}")
-        return None
-
-
 def get_coordinates(location_name, timeout=10, retries=3):
 
     geolocator = Nominatim(user_agent="location_geocoder")
 
     for attempt in range(retries):
         try:
-            #print(location_name)
             location = geolocator.geocode(location_name, timeout=timeout)
 
             if location:
-                #print("Location found")
-                #print(f"Lat: {location.latitude} Lon: {location.longitude}")
                 return (location.latitude, location.longitude)
             else:
-                #print("No location found")
                 return None
 
         except GeocoderTimedOut:
@@ -69,9 +47,16 @@ async def forecast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """Get forecast for given location"""
     message = update.message.text
     if len(message.split()) > 1:
-        location = get_coordinates(" ".join(update.message.text.split()[1:]))
+        location = await asyncio.to_thread(
+            get_coordinates, " ".join(update.message.text.split()[1:])
+        )
         if location != None:
-            weather = mgr.forecast_at_coords(lat=location[0], lon=location[1], interval='daily')
+            weather = await asyncio.to_thread(
+                mgr.forecast_at_coords,
+                lat=location[0],
+                lon=location[1],
+                interval='daily',
+            )
             cur_forecast = ""
             for i in range(len(weather.forecast.weathers)):
                 cur_forecast += f"{weather.forecast.weathers[i].reference_time(timeformat='iso')} - {weather.forecast.weathers[i].detailed_status} Temp: {weather.forecast.weathers[i].temperature('celsius')['day']}\n"
@@ -85,7 +70,7 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if len(message.split()) > 1:
         if message.split()[1].isdigit():
             zipcode = message.split()[1]
-            weather = mgr.weather_at_zip_code(zipcode,'US').weather
+            weather = (await asyncio.to_thread(mgr.weather_at_zip_code, zipcode, 'US')).weather
             temperature = weather.temperature('fahrenheit')
             wind = str(round(weather.wind(unit='miles_hour')['speed'],2)) + "mph"
             fltemp = str(temperature['feels_like']) + "\u00b0 F (" + str(round((temperature['feels_like']-32)/1.8)) + "\u00b0 C)"
@@ -100,9 +85,13 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 f"The sun will set at {weather.sunset_time(timeformat='date')}"
             await context.bot.send_message(update.message.chat_id, text=f"{forcast}")
         else:
-            location = get_coordinates(" ".join(update.message.text.split()[1:]))
+            location = await asyncio.to_thread(
+                get_coordinates, " ".join(update.message.text.split()[1:])
+            )
             if location != None:
-                weather = mgr.weather_at_coords(lat=location[0], lon=location[1]).weather
+                weather = (await asyncio.to_thread(
+                    mgr.weather_at_coords, lat=location[0], lon=location[1]
+                )).weather
                 temperature = weather.temperature('celsius')
                 humidity = str(weather.humidity)
                 wind = str(round((weather.wind()['speed'] * 3.6),2)) + "kph"
