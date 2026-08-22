@@ -3,16 +3,17 @@ import logging
 import os
 
 import httpx
-
 from telegram import Update
 from telegram.ext import ContextTypes
 
-import config
+from settings import LASTFM_API_KEY
 
 logger = logging.getLogger(__name__)
 
 API_URL = "https://ws.audioscrobbler.com/2.0/"
-DATA_FILE = os.path.join(os.getcwd(), "lastfm_users.json")
+DATA_FILE = os.environ.get(
+    "LASTFM_DATA_FILE", os.path.join(os.getcwd(), "lastfm_users.json")
+)
 
 
 def _load_users() -> dict:
@@ -44,7 +45,7 @@ def _store_username(user_id: int, username: str) -> None:
 async def _api_call(method: str, **params) -> dict:
     query = {
         "method": method,
-        "api_key": config.LASTFM_API_KEY,
+        "api_key": LASTFM_API_KEY,
         "format": "json",
         **params,
     }

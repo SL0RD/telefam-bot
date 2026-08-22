@@ -1,15 +1,14 @@
 import logging
 
 import httpx
-
 from telegram import Update
 from telegram.ext import ContextTypes
 
-import config
+from settings import ER_API_KEY
 
 logger = logging.getLogger(__name__)
 
-ER_API_URL = f"https://v6.exchangerate-api.com/v6/{config.er_api_key}/latest/USD"
+ER_API_URL = f"https://v6.exchangerate-api.com/v6/{ER_API_KEY}/latest/USD"
 
 
 def parse_command_amount(text: str):

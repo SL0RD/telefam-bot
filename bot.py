@@ -7,8 +7,6 @@ import re
 import sys
 import time
 
-import config
-
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -19,10 +17,10 @@ from telegram.ext import (
     filters,
 )
 
-TOKEN = config.TOKEN
+from settings import ADMIN_IDS, ADMIN_USERNAME, TOKEN
+
 MODULE_DIR = os.path.join(os.getcwd(), "modules")
-ADMIN_IDS = set(getattr(config, "ADMIN_IDS", []))
-ADMIN_USERNAME = getattr(config, "ADMIN_USERNAME", "SL0RD")
+CHATLOG_DIR = os.environ.get("CHATLOG_DIR", "chatlogs")
 
 modules = {}
 commands = []
@@ -43,7 +41,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-os.makedirs("chatlogs", exist_ok=True)
+os.makedirs(CHATLOG_DIR, exist_ok=True)
 
 
 def sanitize_filename(name: str) -> str:
@@ -57,7 +55,7 @@ def get_log_filename(chat) -> str:
 
 
 def write_chat_log(logmsg: str, filename: str) -> None:
-    with open(os.path.join("chatlogs", filename), "a") as logfile:
+    with open(os.path.join(CHATLOG_DIR, filename), "a") as logfile:
         logfile.write(logmsg + "\n")
 
 
@@ -80,7 +78,8 @@ def render_message_content(message) -> str:
     elif message.video_note:
         content = "[video note]"
     elif message.document:
-        content = f"[file: {message.document.file_name}]" if message.document.file_name else "[file]"
+        fname = message.document.file_name
+        content = f"[file: {fname}]" if fname else "[file]"
     else:
         content = "[message]"
 
@@ -175,7 +174,7 @@ def loadcommands(rehash: bool = False) -> None:
             command_name = name[:-8]
             if command_name in commands or any(
                 command_name in getattr(handler, "commands", ())
-                for handler in application.handlers[0]
+                for handler in application.handlers.get(0, ())
                 if isinstance(handler, CommandHandler)
             ):
                 logger.warning("Skipping duplicate command: %s", command_name)

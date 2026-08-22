@@ -1,0 +1,27 @@
+# Never bake secrets or local state into images
+config.py
+.env
+lastfm_users.json
+chatlogs/
+
+# Dev / CI artifacts
+.git
+.gitignore
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+tests/
+conftest.py
+
+# Not needed at runtime
+example.conf.py
+requirements-dev.txt
+pyproject.toml
+readme.md
+docker-compose.yml
+Dockerfile
+.dockerignore
