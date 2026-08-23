@@ -17,10 +17,11 @@ from telegram.ext import (
     filters,
 )
 
-from settings import ADMIN_IDS, ADMIN_USERNAME, TOKEN
+from settings import ADMIN_IDS, ADMIN_USERNAME, NOTIFY_CHAT_IDS, TOKEN
 
 MODULE_DIR = os.path.join(os.getcwd(), "modules")
 CHATLOG_DIR = os.environ.get("CHATLOG_DIR", "chatlogs")
+GIT_SHA = os.environ.get("GIT_SHA", "")
 
 modules = {}
 commands = []
@@ -101,6 +102,28 @@ def is_admin(user) -> bool:
     if ADMIN_IDS:
         return user.id in ADMIN_IDS
     return bool(user.username) and user.username == ADMIN_USERNAME
+
+
+def update_notice_text(sha: str):
+    """Human-readable deployment notice for a git SHA, or None if empty."""
+    if not sha:
+        return None
+    return f"Updated to commit {sha[:7]} - back online."
+
+
+async def send_update_notice(application: Application) -> None:
+    """Announce a new deployment to configured chats before polling starts.
+
+    Fires only for versioned builds (GIT_SHA set); silent otherwise.
+    """
+    text = update_notice_text(GIT_SHA)
+    if not text or not NOTIFY_CHAT_IDS:
+        return
+    for chat_id in NOTIFY_CHAT_IDS:
+        try:
+            await application.bot.send_message(chat_id=chat_id, text=text)
+        except Exception as e:
+            logger.warning("Update notice to chat %s failed: %s", chat_id, e)
 
 
 def load_modules() -> dict:
@@ -246,7 +269,7 @@ def main() -> None:
 
     modules = load_modules()
 
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).post_init(send_update_notice).build()
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))

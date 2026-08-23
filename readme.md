@@ -30,6 +30,8 @@ Configuration is resolved from environment variables first, then from `config.py
 | `LASTFM_API_KEY` | `LASTFM_API_KEY` | [Last.fm](https://www.last.fm/api/account/create) |
 | `ADMIN_IDS` | `ADMIN_IDS` | Comma-separated numeric Telegram user IDs |
 | `ADMIN_USERNAME` | `ADMIN_USERNAME` | Fallback admin username |
+| `NOTIFY_CHAT_IDS` | — | Comma-separated chat IDs that receive deploy announcements (unset = silent) |
+| `GIT_SHA` | — | Set automatically in Docker builds; enables the "Updated to commit …" startup notice |
 
 3. Run the bot:
 
@@ -111,6 +113,8 @@ docker logs telefam-bot --tail 20          # modules load, polling starts
 ```
 
 To deploy manually, push a commit to `master` or run the Deploy workflow via **Run workflow**.
+
+Each deployment stamps the image with the commit SHA (`GIT_SHA`) and the bot announces itself on startup — set `NOTIFY_CHAT_IDS` in the host `.env` to the chats that should receive it (use `/start` in any chat to get its ID).
 
 ## Commands
 

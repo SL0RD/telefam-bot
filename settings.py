@@ -15,6 +15,7 @@ _ENV_MAP = {
     "LASTFM_API_KEY": "LASTFM_API_KEY",
     "ADMIN_IDS": "ADMIN_IDS",
     "ADMIN_USERNAME": "ADMIN_USERNAME",
+    "NOTIFY_CHAT_IDS": "NOTIFY_CHAT_IDS",
 }
 
 
@@ -56,3 +57,4 @@ ER_API_KEY = _get("EXCHANGERATE_API_KEY", "")
 LASTFM_API_KEY = _get("LASTFM_API_KEY", "")
 ADMIN_USERNAME = _get("ADMIN_USERNAME", "SL0RD")
 ADMIN_IDS = parse_admin_ids(_get("ADMIN_IDS", []))
+NOTIFY_CHAT_IDS = parse_admin_ids(_get("NOTIFY_CHAT_IDS", []))

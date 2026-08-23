@@ -116,3 +116,15 @@ class TestIsAdmin:
 
     def test_no_user(self):
         assert not bot.is_admin(None)
+
+
+class TestUpdateNotice:
+    def test_full_sha_shortened_to_seven_chars(self):
+        text = bot.update_notice_text("fbd2a2dabc1234567890")
+        assert text == "Updated to commit fbd2a2d - back online."
+
+    def test_short_sha_passes_through(self):
+        assert bot.update_notice_text("ab12cd3") == "Updated to commit ab12cd3 - back online."
+
+    def test_empty_sha_is_silent(self):
+        assert bot.update_notice_text("") is None
