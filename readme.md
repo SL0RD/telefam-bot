@@ -46,36 +46,68 @@ pytest         # run tests
 
 ## Deployment (CI/CD)
 
-Pushes to `master` trigger the **Deploy** workflow: lint + tests must pass in CI, then the Docker image is pushed to GHCR (`ghcr.io/sl0rd/telefam-bot`) and a protected webhook redeploys the stack on the server.
+Pushes to `master` trigger the **Deploy** workflow: lint + tests must pass in CI, then the Docker image is pushed to GHCR (`ghcr.io/sl0rd/telefam-bot`) and deployed over SSH.
 
 ### Topology
 
 ```
-GitHub Actions ──POST /telefam/hook──▶ nginx VPS ──TLS──▶ Docker host (Portainer stack)
-                     X-Hook-Secret       path-scoped        bot container
+GitHub Actions ──build & push──▶ ghcr.io/sl0rd/telefam-bot
+       │
+       └──SSH (forced command)──▶ Docker host: /opt/telefam-bot
+                                   docker compose pull && up -d
 ```
 
-The nginx VPS exposes exactly one route, `/telefam/hook`, authenticated by a shared secret header. Portainer's UI and native API paths are never public.
+The runtime stack is plain `docker compose`, owned by `/opt/telefam-bot/` on the host. Portainer (if used) watches it read-only as an external stack — no Portainer features are required.
 
-### One-time setup
+### Server setup (one-time)
 
-1. **Portainer (Docker host)** — create a stack from this repo's `docker-compose.yml` and set its environment variables (`TELEGRAM_TOKEN`, `OWM_API_KEY`, `EXCHANGERATE_API_KEY`, `LASTFM_API_KEY`, optional `ADMIN_IDS`). Enable **Webhooks** and note the `<id>` and `<token>` from the displayed webhook URL.
-2. **Docker host firewall** — allow ports 9000/9443 only from the nginx VPS's IP; deny everyone else. Otherwise the proxy can be bypassed entirely.
-3. **nginx VPS** — follow [`deploy/nginx-webhook.conf.example`](deploy/nginx-webhook.conf.example): expose `/telefam/hook`, protected by an `X-Hook-Secret` header (generate with `openssl rand -hex 32`). Portainer's native `/api/stacks/...` paths return 404.
-4. **GHCR pull access** — either set the package to public, or store a GitHub PAT with `read:packages` in Portainer under **Registries**.
-5. **GitHub secrets** (repository level):
+1. On the Docker host, create `/opt/telefam-bot/` containing the repo's `docker-compose.yml`, a `.env` file, and [`deploy/deploy.sh`](deploy/deploy.sh):
 
-   | Secret | Value |
-   |--------|-------|
-   | `PORTAINER_WEBHOOK_URL` | `https://<domain>/telefam/hook` |
-   | `PORTAINER_HOOK_SECRET` | same hex string as in the nginx config |
+   ```dotenv
+   # .env — root:deploy, mode 0640
+   TELEGRAM_TOKEN=...
+   OWM_API_KEY=...
+   EXCHANGERATE_API_KEY=...
+   LASTFM_API_KEY=...
+   ADMIN_IDS=123456789,987654321
+   ```
+
+   ```bash
+   sudo chown root:root deploy.sh && sudo chmod 755 deploy.sh
+   ```
+
+2. Dedicated CI account and key pair:
+
+   ```bash
+   sudo useradd -m -s /bin/bash deploy
+   sudo usermod -aG docker deploy
+   ssh-keygen -t ed25519 -N "" -C telefam-ci -f telefam_deploy_key
+   ```
+
+3. `/home/deploy/.ssh/authorized_keys` uses a **forced command** so the CI key can only ever run the deploy script — no shell, no tunnels:
+
+   ```
+   command="/opt/telefam-bot/deploy.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA... telefam-ci
+   ```
+
+### GitHub repository secrets
+
+| Secret | Value |
+|--------|-------|
+| `DEPLOY_HOST` | Docker host hostname or IP |
+| `DEPLOY_SSH_KEY` | contents of the **private** key (`telefam_deploy_key`) |
+| `DEPLOY_HOST_KEY` | verbatim output of `ssh-keyscan -t ed25519 <host>` |
+
+### GHCR pull access
+
+Either set the package to public, or on the Docker host run `echo "<PAT>" | docker login ghcr.io -u SL0RD --password-stdin` with a PAT that has `read:packages`.
 
 ### Verify
 
 ```bash
-curl -i -X POST -H "X-Hook-Secret: <secret>" https://<domain>/telefam/hook  # 200, stack redeploys
-curl -i -X POST https://<domain>/telefam/hook                               # 403, blocked at nginx
-curl -i https://<domain>/api/state                                          # 404, internals closed
+ssh -i telefam_deploy_key deploy@<host>    # runs deploy.sh immediately; no shell prompt = forced command working
+cd /opt/telefam-bot && docker compose ps   # container Up
+docker logs telefam-bot --tail 20          # modules load, polling starts
 ```
 
 To deploy manually, push a commit to `master` or run the Deploy workflow via **Run workflow**.

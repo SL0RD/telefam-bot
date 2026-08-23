@@ -21,3 +21,9 @@ lastfm_users.json
 .vscode/
 *.swp
 .DS_Store
+
+# CI deploy keys — NEVER commit these
+telefam_deploy_key
+telefam_deploy_key.pub
+*_deploy_key
+*_deploy_key.pub

@@ -40,15 +40,23 @@ jobs:
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
 
-      - name: Redeploy via Portainer webhook
+      - name: Redeploy over SSH
         env:
-          PORTAINER_WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
-          PORTAINER_HOOK_SECRET: ${{ secrets.PORTAINER_HOOK_SECRET }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
         run: |
-          if [ -z "$PORTAINER_WEBHOOK_URL" ] || [ -z "$PORTAINER_HOOK_SECRET" ]; then
-            echo "PORTAINER_WEBHOOK_URL or PORTAINER_HOOK_SECRET not set - skipping redeploy (image was still pushed)"
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_HOST_KEY" ]; then
+            echo "Deploy secrets not fully configured - skipping redeploy (image was still pushed)"
             exit 0
           fi
-          curl -fsS --max-time 30 -X POST \
-            -H "X-Hook-Secret: $PORTAINER_HOOK_SECRET" \
-            "$PORTAINER_WEBHOOK_URL"
+          install -dm700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          # No remote command: the server's forced authorized_keys entry runs
+          # deploy.sh, so this session can never execute anything else.
+          ssh -i ~/.ssh/id_ed25519 \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              "deploy@$DEPLOY_HOST"
