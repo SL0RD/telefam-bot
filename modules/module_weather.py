@@ -49,21 +49,21 @@ def _status_emoji(status: str) -> str:
     s = (status or "").lower()
     for key, emoji in (
         ("thunder", "\u26c8\ufe0f"),
-        ("drizzle", "\ud83c\udf26\ufe0f"),
-        ("rain", "\ud83c\udf27\ufe0f"),
-        ("snow", "\ud83c\udf28\ufe0f"),
-        ("sleet", "\ud83c\udf28\ufe0f"),
-        ("hail", "\ud83c\udf28\ufe0f"),
+        ("drizzle", "\U0001f326\ufe0f"),
+        ("rain", "\U0001f327\ufe0f"),
+        ("snow", "\U0001f328\ufe0f"),
+        ("sleet", "\U0001f328\ufe0f"),
+        ("hail", "\U0001f328\ufe0f"),
         ("cloud", "\u2601\ufe0f"),
-        ("fog", "\ud83c\udf2b\ufe0f"),
-        ("mist", "\ud83c\udf2b\ufe0f"),
-        ("haze", "\ud83c\udf2b\ufe0f"),
+        ("fog", "\U0001f32b\ufe0f"),
+        ("mist", "\U0001f32b\ufe0f"),
+        ("haze", "\U0001f32b\ufe0f"),
         ("clear", "\u2600\ufe0f"),
         ("sun", "\u2600\ufe0f"),
     ):
         if key in s:
             return emoji
-    return "\ud83c\udf24\ufe0f"
+    return "\U0001f324\ufe0f"
 
 
 def _forecast_line(iso_time: str, temp_c: float, status: str) -> str:

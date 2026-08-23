@@ -12,11 +12,11 @@ class TestForecastLine:
 
     def test_forecast_line_rain_emoji(self):
         line = _forecast_line("2026-08-23T09:05:00+00:00", 15.5, "light rain")
-        assert line == "\ud83c\udf27\ufe0f Sun Aug 23 - Light rain Temp: 16\u00b0C"
+        assert line == "\U0001f327\ufe0f Sun Aug 23 - Light rain Temp: 16\u00b0C"
 
     def test_forecast_line_snow_emoji(self):
         line = _forecast_line("2026-12-31T20:30:00+00:00", 0.4, "snow")
-        assert line == "\ud83c\udf28\ufe0f Thu Dec 31 - Snow Temp: 0\u00b0C"
+        assert line == "\U0001f328\ufe0f Thu Dec 31 - Snow Temp: 0\u00b0C"
 
     def test_forecast_line_rounds_temperature(self):
         assert "Temp: 22\u00b0C" in _forecast_line("2026-08-24T12:00:00+00:00", 21.6, "cloudy")
@@ -32,12 +32,32 @@ class TestStatusEmoji:
         assert _status_emoji("overcast clouds") == "\u2601\ufe0f"
 
     def test_fog_family(self):
-        assert _status_emoji("mist") == "\ud83c\udf2b\ufe0f"
-        assert _status_emoji("fog") == "\ud83c\udf2b\ufe0f"
+        assert _status_emoji("mist") == "\U0001f32b\ufe0f"
+        assert _status_emoji("fog") == "\U0001f32b\ufe0f"
 
     def test_unknown_condition_gets_default(self):
-        assert _status_emoji("sandstorms of mars") == "\ud83c\udf24\ufe0f"
-        assert _status_emoji("") == "\ud83c\udf24\ufe0f"
+        assert _status_emoji("sandstorms of mars") == "\U0001f324\ufe0f"
+        assert _status_emoji("") == "\U0001f324\ufe0f"
+
+    def test_all_emoji_encode_to_utf8(self):
+        statuses = [
+            "thunderstorm with heavy rain",
+            "shower drizzle",
+            "light rain",
+            "snow",
+            "sleet",
+            "hail",
+            "few clouds",
+            "fog",
+            "mist",
+            "haze",
+            "clear sky",
+            "sunny",
+            "sandstorms of mars",
+        ]
+        for status in statuses:
+            emoji = _status_emoji(status)
+            assert emoji.encode("utf-8").decode("utf-8") == emoji
 
 
 class TestLocalDisplay:
