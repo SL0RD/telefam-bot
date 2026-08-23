@@ -18,7 +18,7 @@ DATA_FILE = os.environ.get(
 
 def _load_users() -> dict:
     try:
-        with open(DATA_FILE) as f:
+        with open(DATA_FILE, encoding="utf-8") as f:
             data = json.load(f)
         return {int(user_id): username for user_id, username in data.items()}
     except (OSError, ValueError):
@@ -27,7 +27,7 @@ def _load_users() -> dict:
 
 def _save_users(users: dict) -> None:
     tmp = DATA_FILE + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(users, f, indent=2)
     os.replace(tmp, DATA_FILE)
 

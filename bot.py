@@ -56,7 +56,9 @@ def get_log_filename(chat) -> str:
 
 
 def write_chat_log(logmsg: str, filename: str) -> None:
-    with open(os.path.join(CHATLOG_DIR, filename), "a") as logfile:
+    with open(
+        os.path.join(CHATLOG_DIR, filename), "a", encoding="utf-8"
+    ) as logfile:
         logfile.write(logmsg + "\n")
 
 
