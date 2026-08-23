@@ -117,7 +117,10 @@ async def send_update_notice(application: Application) -> None:
     Fires only for versioned builds (GIT_SHA set); silent otherwise.
     """
     text = update_notice_text(GIT_SHA)
-    if not text or not NOTIFY_CHAT_IDS:
+    if not text:
+        return
+    logger.info("Deployed version %s", GIT_SHA[:7])
+    if not NOTIFY_CHAT_IDS:
         return
     for chat_id in NOTIFY_CHAT_IDS:
         try:
@@ -267,6 +270,7 @@ async def log_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 def main() -> None:
     global application, modules
 
+    logger.info("telefam-bot starting (version %s)", GIT_SHA[:7] or "dev")
     modules = load_modules()
 
     application = Application.builder().token(TOKEN).post_init(send_update_notice).build()
