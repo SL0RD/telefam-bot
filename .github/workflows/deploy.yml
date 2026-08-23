@@ -55,23 +55,31 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
-          # Accept either a raw keyscan line ("<host> ssh-ed25519 AAAA...")
-          # or a bare "ssh-ed25519 AAAA..." pair; always rebind it to the
-          # exact hostname we connect with so lookups can't miss.
-          KEY_FIELDS="$(printf '%s\n' "$DEPLOY_HOST_KEY" \
-            | tr -d '\r' \
-            | grep -E '(^| )(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp[0-9]+) ' \
-            | head -n1 \
-            | awk '{print $(NF-1), $NF}')"
-          if [ -z "$KEY_FIELDS" ]; then
-            if printf '%s\n' "$DEPLOY_HOST_KEY" | grep -q '^#'; then
-              echo "::error::DEPLOY_HOST_KEY contains only keyscan's '#' comment line - use the non-comment line: ssh-keyscan -t ed25519 <host> | grep -v '^#'"
-            else
-              echo "::error::DEPLOY_HOST_KEY contains no recognizable host key line - expected '<host> ssh-ed25519 AAAA...' (not a fingerprint or private key)"
-            fi
+          # Accept raw keyscan output ("<host> ssh-ed25519 AAAA..."), bare
+          # "ssh-ed25519 AAAA...", or full .pub lines with trailing comments;
+          # always rebind the key to the exact hostname we connect with.
+          LINE="$(printf '%s\n' "$DEPLOY_HOST_KEY" | tr -d '\r' \
+            | grep -m1 -E '(^|[[:space:]])(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp[0-9]+)([[:space:]]|$)' || true)"
+          KEYTYPE=""
+          BASE64=""
+          if [ -n "$LINE" ]; then
+            PREV=""
+            for tok in $LINE; do
+              if [ -n "$PREV" ]; then
+                KEYTYPE="$PREV"
+                BASE64="$tok"
+                break
+              fi
+              case "$tok" in
+                ssh-ed25519|ssh-rsa|ecdsa-sha2-*) PREV="$tok" ;;
+              esac
+            done
+          fi
+          if [ -z "$BASE64" ]; then
+            echo "::error::DEPLOY_HOST_KEY contains no usable '<keytype> <base64>' pair - expected e.g.: ssh-keyscan -t ed25519 <host> | grep -v '^#' (a private key or fingerprint won't work)"
             exit 1
           fi
-          printf '%s %s\n' "$DEPLOY_HOST" "$KEY_FIELDS" > ~/.ssh/known_hosts
+          printf '%s %s %s\n' "$DEPLOY_HOST" "$KEYTYPE" "$BASE64" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
           echo "Pinned host key for $DEPLOY_HOST:"
