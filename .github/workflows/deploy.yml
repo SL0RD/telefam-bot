@@ -50,13 +50,33 @@ jobs:
             echo "Deploy secrets not fully configured - skipping redeploy (image was still pushed)"
             exit 0
           fi
+
           install -dm700 ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
-          printf '%s\n' "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+
+          # Accept either a raw keyscan line ("<host> ssh-ed25519 AAAA...")
+          # or a bare "ssh-ed25519 AAAA..." pair; always rebind it to the
+          # exact hostname we connect with so lookups can't miss.
+          KEY_FIELDS="$(printf '%s\n' "$DEPLOY_HOST_KEY" \
+            | tr -d '\r' \
+            | grep -E '(^| )(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp[0-9]+) ' \
+            | head -n1 \
+            | awk '{print $(NF-1), $NF}')"
+          if [ -z "$KEY_FIELDS" ]; then
+            echo "::error::DEPLOY_HOST_KEY contains no recognizable host key line - re-run: ssh-keyscan -t ed25519 <host>"
+            exit 1
+          fi
+          printf '%s %s\n' "$DEPLOY_HOST" "$KEY_FIELDS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          echo "Pinned host key for $DEPLOY_HOST:"
+          ssh-keygen -lf ~/.ssh/known_hosts
+
           # No remote command: the server's forced authorized_keys entry runs
           # deploy.sh, so this session can never execute anything else.
           ssh -i ~/.ssh/id_ed25519 \
               -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -o IdentitiesOnly=yes \
               "deploy@$DEPLOY_HOST"
