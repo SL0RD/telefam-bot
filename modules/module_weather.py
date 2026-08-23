@@ -1,5 +1,6 @@
 import asyncio
 import time
+from datetime import datetime
 
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 
@@ -30,6 +31,12 @@ def _f_display(temp) -> str:
 
 def _c_display(temp) -> str:
     return f"{temp}\u00b0 C ({round(temp * 1.8) + 32}\u00b0 F)"
+
+
+def _forecast_line(iso_time: str, temp_c: float, status: str) -> str:
+    """One forecast row: 'Sun Aug 23 - Clear sky Temp: 21°C'."""
+    when = datetime.fromisoformat(iso_time)
+    return f"{when.strftime('%a %b %d')} - {status.capitalize()} Temp: {temp_c:.0f}\u00b0C"
 
 def get_coordinates(location_name, timeout=10, retries=3):
 
@@ -76,8 +83,12 @@ async def forecast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             for day in weather.forecast.weathers:
                 temp = day.temperature('celsius')['day']
                 cur_forecast += (
-                    f"{day.reference_time(timeformat='iso')} - {day.detailed_status} "
-                    f"Temp: {temp}\n"
+                    _forecast_line(
+                        day.reference_time(timeformat='iso'),
+                        temp,
+                        day.detailed_status,
+                    )
+                    + "\n"
                 )
 
             await context.bot.send_message(update.message.chat_id, text=f"{cur_forecast}")
