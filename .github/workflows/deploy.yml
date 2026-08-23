@@ -64,7 +64,11 @@ jobs:
             | head -n1 \
             | awk '{print $(NF-1), $NF}')"
           if [ -z "$KEY_FIELDS" ]; then
-            echo "::error::DEPLOY_HOST_KEY contains no recognizable host key line - re-run: ssh-keyscan -t ed25519 <host>"
+            if printf '%s\n' "$DEPLOY_HOST_KEY" | grep -q '^#'; then
+              echo "::error::DEPLOY_HOST_KEY contains only keyscan's '#' comment line - use the non-comment line: ssh-keyscan -t ed25519 <host> | grep -v '^#'"
+            else
+              echo "::error::DEPLOY_HOST_KEY contains no recognizable host key line - expected '<host> ssh-ed25519 AAAA...' (not a fingerprint or private key)"
+            fi
             exit 1
           fi
           printf '%s %s\n' "$DEPLOY_HOST" "$KEY_FIELDS" > ~/.ssh/known_hosts
