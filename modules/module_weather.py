@@ -1,6 +1,7 @@
 import asyncio
 import time
-from datetime import datetime
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 
@@ -9,11 +10,14 @@ from geopy.geocoders import Nominatim
 from pyowm import OWM as OWMClient
 from telegram import Update
 from telegram.ext import ContextTypes
+from timezonefinder import TimezoneFinder
 
 from settings import OWM
 
 owm = OWMClient(OWM)
 mgr = owm.weather_manager()
+
+_TZ_FINDER = TimezoneFinder()
 
 COUNTRY_CODES = ['CA','US']
 STATE_CODES = [
@@ -33,10 +37,42 @@ def _c_display(temp) -> str:
     return f"{temp}\u00b0 C ({round(temp * 1.8) + 32}\u00b0 F)"
 
 
+def _local_display(dt_utc, lat, lon) -> str:
+    """Render a naive-UTC datetime in local wall time, e.g. '7:42 PM ADT'."""
+    tzname = _TZ_FINDER.timezone_at(lat=float(lat), lng=float(lon)) or "UTC"
+    local = dt_utc.replace(tzinfo=UTC).astimezone(ZoneInfo(tzname))
+    return local.strftime("%I:%M %p %Z").lstrip("0")
+
+
+def _status_emoji(status: str) -> str:
+    """Pick an emoji matching an OWM condition string like 'light rain'."""
+    s = (status or "").lower()
+    for key, emoji in (
+        ("thunder", "\u26c8\ufe0f"),
+        ("drizzle", "\ud83c\udf26\ufe0f"),
+        ("rain", "\ud83c\udf27\ufe0f"),
+        ("snow", "\ud83c\udf28\ufe0f"),
+        ("sleet", "\ud83c\udf28\ufe0f"),
+        ("hail", "\ud83c\udf28\ufe0f"),
+        ("cloud", "\u2601\ufe0f"),
+        ("fog", "\ud83c\udf2b\ufe0f"),
+        ("mist", "\ud83c\udf2b\ufe0f"),
+        ("haze", "\ud83c\udf2b\ufe0f"),
+        ("clear", "\u2600\ufe0f"),
+        ("sun", "\u2600\ufe0f"),
+    ):
+        if key in s:
+            return emoji
+    return "\ud83c\udf24\ufe0f"
+
+
 def _forecast_line(iso_time: str, temp_c: float, status: str) -> str:
-    """One forecast row: 'Sun Aug 23 - Clear sky Temp: 21°C'."""
+    """One forecast row: '☀️ Sun Aug 23 - Clear sky Temp: 21°C'."""
     when = datetime.fromisoformat(iso_time)
-    return f"{when.strftime('%a %b %d')} - {status.capitalize()} Temp: {temp_c:.0f}\u00b0C"
+    return (
+        f"{_status_emoji(status)} {when.strftime('%a %b %d')} - "
+        f"{status.capitalize()} Temp: {temp_c:.0f}\u00b0C"
+    )
 
 def get_coordinates(location_name, timeout=10, retries=3):
 
@@ -108,11 +144,16 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             mintemp = _f_display(temperature['temp_min'])
             maxtemp = _f_display(temperature['temp_max'])
             humidity = str(weather.humidity)
+            sunset = _local_display(
+                weather.sunset_time(timeformat='date'),
+                weather.location.lat,
+                weather.location.lon,
+            )
             forcast = f"It is currently {weather.detailed_status} and feels like {fltemp}\n"\
                 f"It will reach a high of {maxtemp}, with a low of {mintemp}\n"\
                 f"The humidity is {humidity}%\n"\
                 f"The actual temperature is: {rtemp} with a windspeed of {wind}\n"\
-                f"The sun will set at {weather.sunset_time(timeformat='date')}"
+                f"The sun will set at {sunset}"
             await context.bot.send_message(update.message.chat_id, text=f"{forcast}")
         else:
             location = await asyncio.to_thread(
@@ -129,7 +170,9 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 rtemp = _c_display(temperature['temp'])
                 mintemp = _c_display(temperature['temp_min'])
                 maxtemp = _c_display(temperature['temp_max'])
-                sunset = weather.sunset_time(timeformat='date').time().strftime('%H:%M:%S')
+                sunset = _local_display(
+                    weather.sunset_time(timeformat='date'), location[0], location[1]
+                )
                 forcast = f"It's currently {weather.detailed_status} and feels like {fltemp}\n"\
                     f"It will reach a high of {maxtemp}, with a low of {mintemp}\n"\
                     f"The humidity is {humidity}%\n"\
