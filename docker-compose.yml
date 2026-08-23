@@ -10,6 +10,7 @@ services:
       LASTFM_API_KEY: ${LASTFM_API_KEY}
       ADMIN_IDS: ${ADMIN_IDS:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-SL0RD}
+      NOTIFY_CHAT_IDS: ${NOTIFY_CHAT_IDS:-}
       LASTFM_DATA_FILE: /data/lastfm_users.json
     volumes:
       - bot-chatlogs:/app/chatlogs
