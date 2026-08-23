@@ -43,9 +43,12 @@ jobs:
       - name: Redeploy via Portainer webhook
         env:
           PORTAINER_WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+          PORTAINER_HOOK_SECRET: ${{ secrets.PORTAINER_HOOK_SECRET }}
         run: |
-          if [ -z "$PORTAINER_WEBHOOK_URL" ]; then
-            echo "PORTAINER_WEBHOOK_URL not set - skipping redeploy (image was still pushed)"
+          if [ -z "$PORTAINER_WEBHOOK_URL" ] || [ -z "$PORTAINER_HOOK_SECRET" ]; then
+            echo "PORTAINER_WEBHOOK_URL or PORTAINER_HOOK_SECRET not set - skipping redeploy (image was still pushed)"
             exit 0
           fi
-          curl -fsS --max-time 30 -X POST "$PORTAINER_WEBHOOK_URL"
+          curl -fsS --max-time 30 -X POST \
+            -H "X-Hook-Secret: $PORTAINER_HOOK_SECRET" \
+            "$PORTAINER_WEBHOOK_URL"

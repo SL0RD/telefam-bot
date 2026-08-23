@@ -46,15 +46,37 @@ pytest         # run tests
 
 ## Deployment (CI/CD)
 
-Pushes to `master` trigger the **Deploy** workflow: lint + tests must pass in CI, then the Docker image is pushed to GHCR (`ghcr.io/sl0rd/telefam-bot`) and a Portainer webhook redeploys the stack.
+Pushes to `master` trigger the **Deploy** workflow: lint + tests must pass in CI, then the Docker image is pushed to GHCR (`ghcr.io/sl0rd/telefam-bot`) and a protected webhook redeploys the stack on the server.
 
-### Portainer / VPS setup
+### Topology
 
-1. In Portainer, create a new stack from this repo's `docker-compose.yml` (Repository option) or paste it into the web editor.
-2. Set the stack's environment variables (`TELEGRAM_TOKEN`, `OWM_API_KEY`, `EXCHANGERATE_API_KEY`, `LASTFM_API_KEY`, optional `ADMIN_IDS`).
-3. In the stack's details, enable **Webhooks** and copy the redeploy webhook URL.
-4. Add the URL as the `PORTAINER_WEBHOOK_URL` secret in the GitHub repo settings.
-5. Make sure the VPS can pull from GHCR — either set the package to public, or store a GitHub PAT with `read:packages` in Portainer under **Registries**.
+```
+GitHub Actions ──POST /telefam/hook──▶ nginx VPS ──TLS──▶ Docker host (Portainer stack)
+                     X-Hook-Secret       path-scoped        bot container
+```
+
+The nginx VPS exposes exactly one route, `/telefam/hook`, authenticated by a shared secret header. Portainer's UI and native API paths are never public.
+
+### One-time setup
+
+1. **Portainer (Docker host)** — create a stack from this repo's `docker-compose.yml` and set its environment variables (`TELEGRAM_TOKEN`, `OWM_API_KEY`, `EXCHANGERATE_API_KEY`, `LASTFM_API_KEY`, optional `ADMIN_IDS`). Enable **Webhooks** and note the `<id>` and `<token>` from the displayed webhook URL.
+2. **Docker host firewall** — allow ports 9000/9443 only from the nginx VPS's IP; deny everyone else. Otherwise the proxy can be bypassed entirely.
+3. **nginx VPS** — follow [`deploy/nginx-webhook.conf.example`](deploy/nginx-webhook.conf.example): expose `/telefam/hook`, protected by an `X-Hook-Secret` header (generate with `openssl rand -hex 32`). Portainer's native `/api/stacks/...` paths return 404.
+4. **GHCR pull access** — either set the package to public, or store a GitHub PAT with `read:packages` in Portainer under **Registries**.
+5. **GitHub secrets** (repository level):
+
+   | Secret | Value |
+   |--------|-------|
+   | `PORTAINER_WEBHOOK_URL` | `https://<domain>/telefam/hook` |
+   | `PORTAINER_HOOK_SECRET` | same hex string as in the nginx config |
+
+### Verify
+
+```bash
+curl -i -X POST -H "X-Hook-Secret: <secret>" https://<domain>/telefam/hook  # 200, stack redeploys
+curl -i -X POST https://<domain>/telefam/hook                               # 403, blocked at nginx
+curl -i https://<domain>/api/state                                          # 404, internals closed
+```
 
 To deploy manually, push a commit to `master` or run the Deploy workflow via **Run workflow**.
 
